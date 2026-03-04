@@ -129,6 +129,9 @@
 
                 <h2>Jobs</h2>
                 <div class="hls-actions">
+                    <button id="startDownloadsBtn" is="emby-button" type="button" class="raised emby-button">
+                        <span>Start Downloads</span>
+                    </button>
                     <button id="refreshJobsBtn" is="emby-button" type="button" class="raised emby-button">
                         <span>Refresh</span>
                     </button>
@@ -168,6 +171,7 @@
                 var page = document.querySelector('#HlsDownloaderConfigPage');
                 var configForm = document.querySelector('#HlsDownloaderConfigForm');
                 var createForm = document.querySelector('#HlsCreateJobForm');
+                var startDownloadsBtn = document.querySelector('#startDownloadsBtn');
                 var refreshBtn = document.querySelector('#refreshJobsBtn');
                 var autoRefreshCheckbox = document.querySelector('#autoRefresh');
                 var jobsBody = document.querySelector('#jobsTableBody');
@@ -206,6 +210,78 @@
                     }
 
                     return response.json();
+                }
+
+                async function apiScheduledRequest(path, options) {
+                    var token = getAccessToken();
+                    var requestOptions = options || {};
+                    requestOptions.headers = requestOptions.headers || {};
+
+                    if (token) {
+                        requestOptions.headers['X-Emby-Token'] = token;
+                    }
+
+                    var response = await fetch(path, requestOptions);
+                    if (!response.ok) {
+                        var text = await response.text();
+                        throw new Error(text || ('HTTP ' + response.status));
+                    }
+
+                    if (response.status === 204) {
+                        return null;
+                    }
+
+                    var contentType = response.headers.get('content-type') || '';
+                    if (contentType.indexOf('application/json') >= 0) {
+                        return response.json();
+                    }
+
+                    return null;
+                }
+
+                function findHlsTask(tasks) {
+                    if (!Array.isArray(tasks)) {
+                        return null;
+                    }
+
+                    for (var i = 0; i < tasks.length; i++) {
+                        var task = tasks[i];
+                        if (task && task.Key === 'HLSDownloadJobScheduledTask') {
+                            return task;
+                        }
+                    }
+
+                    for (var j = 0; j < tasks.length; j++) {
+                        var candidate = tasks[j];
+                        if (candidate && candidate.Name && candidate.Name.indexOf('HLS Download Job Processor') >= 0) {
+                            return candidate;
+                        }
+                    }
+
+                    return null;
+                }
+
+                async function startDownloadsNow() {
+                    startDownloadsBtn.disabled = true;
+
+                    try {
+                        var tasks = await apiScheduledRequest('/ScheduledTasks?isHidden=false', { method: 'GET' });
+                        var hlsTask = findHlsTask(tasks);
+                        if (!hlsTask || !hlsTask.Id) {
+                            throw new Error('HLS Download Job Processor task not found.');
+                        }
+
+                        await apiScheduledRequest('/ScheduledTasks/Running/' + encodeURIComponent(hlsTask.Id), {
+                            method: 'POST'
+                        });
+
+                        showInfo('Download processing started.');
+                        await loadJobs();
+                    } catch (error) {
+                        showError('Start failed: ' + (error.message || String(error)));
+                    } finally {
+                        startDownloadsBtn.disabled = false;
+                    }
                 }
 
                 function toDateString(value) {
@@ -457,6 +533,10 @@
 
                 refreshBtn.addEventListener('click', function () {
                     loadJobs();
+                });
+
+                startDownloadsBtn.addEventListener('click', function () {
+                    startDownloadsNow();
                 });
 
                 autoRefreshCheckbox.addEventListener('change', function () {
