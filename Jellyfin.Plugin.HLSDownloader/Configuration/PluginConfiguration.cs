@@ -1,4 +1,5 @@
 using MediaBrowser.Model.Plugins;
+using System.ComponentModel;
 
 namespace Jellyfin.Plugin.HLSDownloader.Configuration;
 
