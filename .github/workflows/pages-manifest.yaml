@@ -1,0 +1,132 @@
+name: '🌐 Publish Manifest (GitHub Pages)'
+
+on:
+  release:
+    types:
+      - released
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  publish-manifest:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate manifest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p _site
+
+          # Read metadata from build.yaml
+          NAME=$(sed -n 's/^name: "\(.*\)"/\1/p' build.yaml)
+          GUID=$(sed -n 's/^guid: "\(.*\)"/\1/p' build.yaml)
+          VERSION=$(sed -n 's/^version: "\(.*\)"/\1/p' build.yaml)
+          TARGET_ABI=$(sed -n 's/^targetAbi: "\(.*\)"/\1/p' build.yaml)
+          OVERVIEW=$(sed -n 's/^overview: "\(.*\)"/\1/p' build.yaml)
+          CATEGORY=$(sed -n 's/^category: "\(.*\)"/\1/p' build.yaml)
+          OWNER=$(sed -n 's/^owner: "\(.*\)"/\1/p' build.yaml)
+
+          DESCRIPTION=$(awk '/^description: >/{flag=1;next}/^[^ ]/{flag=0}flag{gsub(/^  /, ""); printf "%s ", $0} END{print ""}' build.yaml | sed 's/[[:space:]]*$//')
+          CHANGELOG=$(awk '/^changelog: >/{flag=1;next}/^[^ ]/{flag=0}flag{gsub(/^  /, ""); printf "%s ", $0} END{print ""}' build.yaml | sed 's/[[:space:]]*$//')
+
+          if [ -z "${DESCRIPTION}" ]; then DESCRIPTION="${OVERVIEW}"; fi
+          if [ -z "${CHANGELOG}" ]; then CHANGELOG="Release ${VERSION}"; fi
+
+          # Fetch latest release and pick first zip asset
+          RELEASE_JSON=$(curl -sSL \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest")
+
+          ZIP_URL=$(printf '%s' "${RELEASE_JSON}" | jq -r '.assets[]? | select(.name | test("\\.zip$")) | .browser_download_url' | head -n1)
+          RELEASE_TAG=$(printf '%s' "${RELEASE_JSON}" | jq -r '.tag_name // empty')
+          RELEASE_PUBLISHED_AT=$(printf '%s' "${RELEASE_JSON}" | jq -r '.published_at // empty')
+
+          if [ -z "${ZIP_URL}" ]; then
+            echo "No ZIP asset found on latest release. Please attach a .zip plugin artifact to a GitHub release."
+            exit 1
+          fi
+
+          if [ -z "${RELEASE_PUBLISHED_AT}" ]; then
+            RELEASE_PUBLISHED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          fi
+
+          if [ -n "${RELEASE_TAG}" ]; then
+            CHANGELOG="${CHANGELOG} (${RELEASE_TAG})"
+          fi
+
+          jq -n \
+            --arg guid "${GUID}" \
+            --arg name "${NAME}" \
+            --arg overview "${OVERVIEW}" \
+            --arg description "${DESCRIPTION}" \
+            --arg owner "${OWNER}" \
+            --arg category "${CATEGORY}" \
+            --arg version "${VERSION}" \
+            --arg targetAbi "${TARGET_ABI}" \
+            --arg sourceUrl "${ZIP_URL}" \
+            --arg changelog "${CHANGELOG}" \
+            --arg timestamp "${RELEASE_PUBLISHED_AT}" \
+            '[
+              {
+                guid: $guid,
+                name: $name,
+                overview: $overview,
+                description: $description,
+                owner: $owner,
+                category: $category,
+                versions: [
+                  {
+                    version: $version,
+                    changelog: $changelog,
+                    targetAbi: $targetAbi,
+                    sourceUrl: $sourceUrl,
+                    timestamp: $timestamp
+                  }
+                ]
+              }
+            ]' > _site/manifest.json
+
+          cat > _site/index.html <<'HTML'
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <title>Jellyfin Plugin Manifest</title>
+          </head>
+          <body>
+            <h1>Jellyfin Plugin Manifest</h1>
+            <p>Use this URL in Jellyfin:</p>
+            <pre>/manifest.json</pre>
+          </body>
+          </html>
+          HTML
+
+          echo "Generated _site/manifest.json"
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
