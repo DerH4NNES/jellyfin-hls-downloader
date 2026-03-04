@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Threading;
 using Jellyfin.Plugin.HLSDownloader.Configuration;
+using Jellyfin.Plugin.HLSDownloader.Data;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Model.Plugins;
@@ -23,6 +25,14 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
         : base(applicationPaths, xmlSerializer)
     {
         Instance = this;
+
+        try
+        {
+            _ = DownloadJobRepository.ResetRunningJobsToQueuedAsync(CancellationToken.None).GetAwaiter().GetResult();
+        }
+        catch
+        {
+        }
     }
 
     /// <inheritdoc />

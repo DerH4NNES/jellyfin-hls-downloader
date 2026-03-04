@@ -17,6 +17,9 @@
     <PackageReference Include="Jellyfin.Model" Version="10.9.11">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -29,5 +32,18 @@
     <None Remove="Configuration\configPage.html" />
     <EmbeddedResource Include="Configuration\configPage.html" />
   </ItemGroup>
+
+  <Target Name="PruneHostSharedAssemblies" AfterTargets="Publish">
+    <ItemGroup>
+      <IncompatibleNativeDlls Include="$(PublishDir)runtimes/win-*/native/*.dll" />
+      <HostSharedAssemblies Include="$(PublishDir)Microsoft.Extensions.Logging*.dll" />
+      <HostSharedAssemblies Include="$(PublishDir)Microsoft.Extensions.DependencyInjection*.dll" />
+      <HostSharedAssemblies Include="$(PublishDir)Microsoft.Extensions.Options.dll" />
+      <HostSharedAssemblies Include="$(PublishDir)Microsoft.Extensions.Configuration.Binder.dll" />
+      <HostSharedAssemblies Include="$(PublishDir)Microsoft.Extensions.DependencyModel.dll" />
+    </ItemGroup>
+    <Delete Files="@(IncompatibleNativeDlls)" />
+    <Delete Files="@(HostSharedAssemblies)" />
+  </Target>
 
 </Project>

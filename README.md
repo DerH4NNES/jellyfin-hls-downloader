@@ -39,7 +39,7 @@ If you'd rather start from scratch keep going on to step one. This assumes no sp
 Make a new dotnet standard project with the following command, it will make a directory for itself.
 
 ```
-dotnet new classlib -f net9.0 -n MyJellyfinPlugin
+dotnet new classlib -f net8.0 -n MyJellyfinPlugin
 ```
 
 Now add the Jellyfin shared libraries.

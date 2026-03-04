@@ -2,53 +2,473 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>Template</title>
+    <title>HLS Downloader</title>
+    <style>
+        .hls-actions {
+            display: flex;
+            gap: 0.75em;
+            flex-wrap: wrap;
+            margin-top: 1em;
+        }
+
+        .hls-table-wrapper {
+            margin-top: 1em;
+            overflow-x: auto;
+        }
+
+        .hls-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .hls-table th,
+        .hls-table td {
+            text-align: left;
+            padding: 0.6em;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            vertical-align: top;
+        }
+
+        .hls-table td code {
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .hls-status {
+            display: inline-block;
+            min-width: 88px;
+            padding: 0.15em 0.55em;
+            border-radius: 999px;
+            font-size: 0.85em;
+            text-align: center;
+            border: 1px solid transparent;
+        }
+
+        .hls-status.status-queued {
+            color: #eab308;
+            border-color: rgba(234, 179, 8, 0.45);
+        }
+
+        .hls-status.status-running {
+            color: #38bdf8;
+            border-color: rgba(56, 189, 248, 0.45);
+        }
+
+        .hls-status.status-done {
+            color: #4ade80;
+            border-color: rgba(74, 222, 128, 0.45);
+        }
+
+        .hls-status.status-error {
+            color: #f87171;
+            border-color: rgba(248, 113, 113, 0.45);
+        }
+
+        .hls-status.status-cancelled {
+            color: #94a3b8;
+            border-color: rgba(148, 163, 184, 0.45);
+        }
+
+        .hls-muted {
+            opacity: 0.75;
+            font-size: 0.9em;
+        }
+
+        .hls-danger {
+            color: #f87171;
+            margin-top: 0.35em;
+            font-size: 0.9em;
+        }
+
+        .hls-ok {
+            color: #4ade80;
+            margin-top: 0.35em;
+            font-size: 0.9em;
+        }
+    </style>
 </head>
 <body>
-    <div id="TemplateConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
+    <div id="HlsDownloaderConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-checkbox">
         <div data-role="content">
             <div class="content-primary">
-                <form id="TemplateConfigForm">
+                <form id="HlsDownloaderConfigForm">
+                    <h2>Settings</h2>
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="downloadDistPath">Download Path</label>
+                        <label class="inputLabel inputLabelUnfocused" for="downloadDistPath">Default Download Path</label>
                         <input id="downloadDistPath" name="downloadDistPath" type="text" is="emby-input" />
-                        <div class="fieldDescription">Local path on Jellyfin system</div>
+                        <div class="fieldDescription">Local path on Jellyfin system used when a new job has no custom output path.</div>
                     </div>
                     <div>
                         <button is="emby-button" type="submit" class="raised button-submit block emby-button">
-                            <span>Save</span>
+                            <span>Save Settings</span>
                         </button>
                     </div>
                 </form>
+
+                <hr />
+
+                <h2>Create Job</h2>
+                <form id="HlsCreateJobForm">
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="startUrl">HLS URL (m3u8)</label>
+                        <input id="startUrl" name="startUrl" type="text" is="emby-input" required />
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="outputPath">Output Path (optional)</label>
+                        <input id="outputPath" name="outputPath" type="text" is="emby-input" />
+                    </div>
+                    <div class="hls-actions">
+                        <button is="emby-button" type="submit" class="raised button-submit emby-button">
+                            <span>Create Job</span>
+                        </button>
+                    </div>
+                    <div id="createJobFeedback"></div>
+                </form>
+
+                <hr />
+
+                <h2>Jobs</h2>
+                <div class="hls-actions">
+                    <button id="refreshJobsBtn" is="emby-button" type="button" class="raised emby-button">
+                        <span>Refresh</span>
+                    </button>
+                    <label class="checkboxContainer">
+                        <input id="autoRefresh" type="checkbox" is="emby-checkbox" />
+                        <span>Auto refresh (5s)</span>
+                    </label>
+                </div>
+                <div id="jobLoadInfo" class="hls-muted"></div>
+                <div class="hls-table-wrapper">
+                    <table class="hls-table">
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>URL</th>
+                                <th>Output</th>
+                                <th>Created</th>
+                                <th>Finished</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="jobsTableBody"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
-        <script type="text/javascript">
-            var TemplateConfig = {
-                pluginUniqueId: 'd0e54984-2989-45bc-b81e-c71838bdba50'
-            };
 
-            document.querySelector('#TemplateConfigPage')
-                .addEventListener('pageshow', function() {
+        <script type="text/javascript">
+            (function () {
+                var HlsDownloader = {
+                    pluginUniqueId: 'd0e54984-2989-45bc-b81e-c71838bdba50',
+                    apiBase: '/api/hlsdownloader/downloads',
+                    autoRefreshStorageKey: 'hlsdownloader.autoRefresh.enabled'
+                };
+
+                var autoRefreshTimer = null;
+                var page = document.querySelector('#HlsDownloaderConfigPage');
+                var configForm = document.querySelector('#HlsDownloaderConfigForm');
+                var createForm = document.querySelector('#HlsCreateJobForm');
+                var refreshBtn = document.querySelector('#refreshJobsBtn');
+                var autoRefreshCheckbox = document.querySelector('#autoRefresh');
+                var jobsBody = document.querySelector('#jobsTableBody');
+                var jobLoadInfo = document.querySelector('#jobLoadInfo');
+                var createFeedback = document.querySelector('#createJobFeedback');
+
+                function getAccessToken() {
+                    try {
+                        if (typeof ApiClient.accessToken === 'function') {
+                            return ApiClient.accessToken();
+                        }
+
+                        if (ApiClient._serverInfo && ApiClient._serverInfo.AccessToken) {
+                            return ApiClient._serverInfo.AccessToken;
+                        }
+                    } catch (error) {
+                    }
+
+                    return '';
+                }
+
+                async function apiRequest(path, options) {
+                    var token = getAccessToken();
+                    var requestOptions = options || {};
+                    requestOptions.headers = requestOptions.headers || {};
+                    requestOptions.headers['Content-Type'] = requestOptions.headers['Content-Type'] || 'application/json';
+
+                    if (token) {
+                        requestOptions.headers['X-Emby-Token'] = token;
+                    }
+
+                    var response = await fetch(HlsDownloader.apiBase + path, requestOptions);
+                    if (!response.ok) {
+                        var text = await response.text();
+                        throw new Error(text || ('HTTP ' + response.status));
+                    }
+
+                    return response.json();
+                }
+
+                function toDateString(value) {
+                    if (!value) {
+                        return '-';
+                    }
+
+                    var date = new Date(value);
+                    if (Number.isNaN(date.getTime())) {
+                        return value;
+                    }
+
+                    return date.toLocaleString();
+                }
+
+                function statusClass(status) {
+                    var normalized = (status || '').toString().toLowerCase();
+                    return 'hls-status status-' + normalized;
+                }
+
+                function canCancel(status) {
+                    var normalized = (status || '').toUpperCase();
+                    return normalized === 'QUEUED' || normalized === 'RUNNING';
+                }
+
+                function isAutoRefreshEnabled() {
+                    return !!autoRefreshCheckbox.checked;
+                }
+
+                function setAutoRefreshEnabled(enabled) {
+                    autoRefreshCheckbox.checked = !!enabled;
+                    if (enabled) {
+                        autoRefreshCheckbox.setAttribute('checked', 'checked');
+                    } else {
+                        autoRefreshCheckbox.removeAttribute('checked');
+                    }
+                }
+
+                function loadAutoRefreshPreference() {
+                    var stored = null;
+                    try {
+                        stored = localStorage.getItem(HlsDownloader.autoRefreshStorageKey);
+                    } catch (error) {
+                    }
+
+                    if (stored === '0') {
+                        setAutoRefreshEnabled(false);
+                        return;
+                    }
+
+                    setAutoRefreshEnabled(true);
+                }
+
+                function persistAutoRefreshPreference() {
+                    try {
+                        localStorage.setItem(HlsDownloader.autoRefreshStorageKey, isAutoRefreshEnabled() ? '1' : '0');
+                    } catch (error) {
+                    }
+                }
+
+                function updateAutoRefreshInfo() {
+                    var suffix = isAutoRefreshEnabled() ? 'Auto refresh: ON (5s)' : 'Auto refresh: OFF';
+                    var currentText = jobLoadInfo.textContent || '';
+                    var stripped = currentText.replace(/\s*\|\s*Auto refresh:.*$/i, '').trim();
+                    jobLoadInfo.textContent = stripped ? (stripped + ' | ' + suffix) : suffix;
+                }
+
+                async function cancelJob(jobId) {
+                    try {
+                        await apiRequest('/jobs/' + encodeURIComponent(jobId) + '/cancel', {
+                            method: 'POST',
+                            body: '{}'
+                        });
+
+                        showInfo('Job cancelled.');
+                        await loadJobs();
+                    } catch (error) {
+                        showError('Cancel failed: ' + (error.message || String(error)));
+                    }
+                }
+
+                function showInfo(message) {
+                    if (typeof Dashboard !== 'undefined' && typeof Dashboard.alert === 'function') {
+                        Dashboard.alert({
+                            title: 'HLS Downloader',
+                            message: message
+                        });
+                    }
+
+                    createFeedback.className = 'hls-ok';
+                    createFeedback.textContent = message;
+                }
+
+                function showError(message) {
+                    if (typeof Dashboard !== 'undefined' && typeof Dashboard.alert === 'function') {
+                        Dashboard.alert({
+                            title: 'HLS Downloader',
+                            message: message
+                        });
+                    }
+
+                    createFeedback.className = 'hls-danger';
+                    createFeedback.textContent = message;
+                }
+
+                function buildActionCell(job) {
+                    if (!canCancel(job.status)) {
+                        return '<span class="hls-muted">-</span>';
+                    }
+
+                    return '<button type="button" class="raised emby-button cancel-job-btn" data-id="' + job.id + '"><span>Cancel</span></button>';
+                }
+
+                function renderJobs(jobs) {
+                    if (!Array.isArray(jobs) || jobs.length === 0) {
+                        jobsBody.innerHTML = '<tr><td colspan="6" class="hls-muted">No jobs found.</td></tr>';
+                        return;
+                    }
+
+                    jobsBody.innerHTML = jobs.map(function (job) {
+                        var errorHtml = job.errorMessage
+                            ? '<div class="hls-danger">' + job.errorMessage + '</div>'
+                            : '';
+
+                        return '<tr>'
+                            + '<td><span class="' + statusClass(job.status) + '">' + (job.status || 'UNKNOWN') + '</span>' + errorHtml + '</td>'
+                            + '<td><code>' + (job.startUrl || '-') + '</code></td>'
+                            + '<td><code>' + (job.outputPath || '-') + '</code></td>'
+                            + '<td>' + toDateString(job.createdAt) + '</td>'
+                            + '<td>' + toDateString(job.finishedAt) + '</td>'
+                            + '<td>' + buildActionCell(job) + '</td>'
+                            + '</tr>';
+                    }).join('');
+
+                    Array.prototype.forEach.call(document.querySelectorAll('.cancel-job-btn'), function (btn) {
+                        btn.addEventListener('click', function () {
+                            cancelJob(btn.getAttribute('data-id'));
+                        });
+                    });
+                }
+
+                async function loadJobs() {
+                    jobLoadInfo.textContent = 'Loading jobs...';
+
+                    try {
+                        var result = await apiRequest('/jobs', { method: 'GET' });
+                        var jobs = result && result.jobs ? result.jobs : [];
+                        renderJobs(jobs);
+                        jobLoadInfo.textContent = 'Last refresh: ' + new Date().toLocaleTimeString();
+                        updateAutoRefreshInfo();
+                    } catch (error) {
+                        jobsBody.innerHTML = '<tr><td colspan="6" class="hls-danger">Failed to load jobs: ' + (error.message || String(error)) + '</td></tr>';
+                        jobLoadInfo.textContent = 'Load failed.';
+                        updateAutoRefreshInfo();
+                    }
+                }
+
+                function startAutoRefresh() {
+                    stopAutoRefresh();
+
+                    if (!isAutoRefreshEnabled()) {
+                        updateAutoRefreshInfo();
+                        return;
+                    }
+
+                    autoRefreshTimer = setInterval(function () {
+                        loadJobs();
+                    }, 5000);
+                    updateAutoRefreshInfo();
+                }
+
+                function stopAutoRefresh() {
+                    if (autoRefreshTimer) {
+                        clearInterval(autoRefreshTimer);
+                        autoRefreshTimer = null;
+                    }
+                }
+
+                page.addEventListener('pageshow', function () {
                     Dashboard.showLoadingMsg();
-                    ApiClient.getPluginConfiguration(TemplateConfig.pluginUniqueId).then(function (config) {
-                        document.querySelector('#downloadDistPath').value = config.DownloadDistPath;
+
+                    ApiClient.getPluginConfiguration(HlsDownloader.pluginUniqueId).then(function (config) {
+                        document.querySelector('#downloadDistPath').value = config.DownloadDistPath || '';
+                        loadAutoRefreshPreference();
+                        Dashboard.hideLoadingMsg();
+                        loadJobs();
+                        startAutoRefresh();
+                    }).catch(function () {
                         Dashboard.hideLoadingMsg();
                     });
                 });
 
-            document.querySelector('#TemplateConfigForm')
-                .addEventListener('submit', function(e) {
-                Dashboard.showLoadingMsg();
-                ApiClient.getPluginConfiguration(TemplateConfig.pluginUniqueId).then(function (config) {
-                    config.DownloadDistPath = document.querySelector('#downloadDistPath').value;
-                    ApiClient.updatePluginConfiguration(TemplateConfig.pluginUniqueId, config).then(function (result) {
-                        Dashboard.processPluginConfigurationUpdateResult(result);
-                    });
+                page.addEventListener('pagehide', function () {
+                    stopAutoRefresh();
                 });
 
-                e.preventDefault();
-                return false;
-            });
+                configForm.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    Dashboard.showLoadingMsg();
+
+                    ApiClient.getPluginConfiguration(HlsDownloader.pluginUniqueId).then(function (config) {
+                        config.DownloadDistPath = document.querySelector('#downloadDistPath').value || '';
+                        return ApiClient.updatePluginConfiguration(HlsDownloader.pluginUniqueId, config);
+                    }).then(function (result) {
+                        Dashboard.processPluginConfigurationUpdateResult(result);
+                    }).finally(function () {
+                        Dashboard.hideLoadingMsg();
+                    });
+
+                    return false;
+                });
+
+                createForm.addEventListener('submit', async function (e) {
+                    e.preventDefault();
+                    createFeedback.className = '';
+                    createFeedback.textContent = '';
+
+                    var startUrl = document.querySelector('#startUrl').value.trim();
+                    var outputPath = document.querySelector('#outputPath').value.trim();
+
+                    if (!startUrl) {
+                        createFeedback.className = 'hls-danger';
+                        createFeedback.textContent = 'Please enter a HLS URL.';
+                        return false;
+                    }
+
+                    var payload = { startUrl: startUrl };
+                    if (outputPath) {
+                        payload.outputPath = outputPath;
+                    }
+
+                    try {
+                        var result = await apiRequest('', {
+                            method: 'POST',
+                            body: JSON.stringify(payload)
+                        });
+
+                        createFeedback.className = 'hls-ok';
+                        createFeedback.textContent = 'Job created: ' + result.jobId;
+                        document.querySelector('#startUrl').value = '';
+                        await loadJobs();
+                    } catch (error) {
+                        createFeedback.className = 'hls-danger';
+                        createFeedback.textContent = 'Create failed: ' + (error.message || String(error));
+                    }
+
+                    return false;
+                });
+
+                refreshBtn.addEventListener('click', function () {
+                    loadJobs();
+                });
+
+                autoRefreshCheckbox.addEventListener('change', function () {
+                    persistAutoRefreshPreference();
+                    startAutoRefresh();
+                });
+
+                autoRefreshCheckbox.addEventListener('click', function () {
+                    persistAutoRefreshPreference();
+                    startAutoRefresh();
+                });
+            })();
         </script>
     </div>
 </body>
