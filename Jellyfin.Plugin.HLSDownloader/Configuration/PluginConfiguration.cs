@@ -1,5 +1,5 @@
-using MediaBrowser.Model.Plugins;
 using System.ComponentModel;
+using MediaBrowser.Model.Plugins;
 
 namespace Jellyfin.Plugin.HLSDownloader.Configuration;
 
@@ -12,5 +12,5 @@ public class PluginConfiguration : BasePluginConfiguration
     /// Gets or sets the downloadDistPath (lokaler Pfad auf Jellyfin-System).
     /// </summary>
     [DefaultValue("")]
-    public string DownloadDistPath { get; set; } = "";
+    public string DownloadDistPath { get; set; } = string.Empty;
 }
