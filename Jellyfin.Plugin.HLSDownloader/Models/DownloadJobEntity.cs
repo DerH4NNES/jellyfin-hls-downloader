@@ -23,6 +23,11 @@ namespace Jellyfin.Plugin.HLSDownloader.Models
         public string OutputPath { get; set; } = string.Empty;
 
         /// <summary>
+        /// Gets or sets an optional external reference for cross-system correlation.
+        /// </summary>
+        public string? Ref { get; set; }
+
+        /// <summary>
         /// Gets or sets the current job state.
         /// </summary>
         public string Status { get; set; } = "QUEUED";

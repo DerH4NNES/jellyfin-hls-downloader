@@ -16,5 +16,10 @@ namespace Jellyfin.Plugin.HLSDownloader.Models
         /// Gets or sets an optional output folder override.
         /// </summary>
         public string? OutputPath { get; set; }
+
+        /// <summary>
+        /// Gets or sets an optional external reference that is stored with the job.
+        /// </summary>
+        public string? Ref { get; set; }
     }
 }

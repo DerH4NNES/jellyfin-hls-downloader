@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jellyfin.Plugin.HLSDownloader.Data
@@ -22,7 +23,19 @@ namespace Jellyfin.Plugin.HLSDownloader.Data
 
             var context = new DownloadJobDbContext(options);
             context.Database.EnsureCreated();
+            EnsureRefColumn(context);
             return context;
+        }
+
+        private static void EnsureRefColumn(DownloadJobDbContext context)
+        {
+            try
+            {
+                _ = context.Database.ExecuteSqlRaw("ALTER TABLE Jobs ADD COLUMN Ref TEXT NULL;");
+            }
+            catch (SqliteException ex) when (ex.SqliteErrorCode == 1 && ex.Message.Contains("duplicate column name", StringComparison.OrdinalIgnoreCase))
+            {
+            }
         }
 
         private static string GetDatabasePath()

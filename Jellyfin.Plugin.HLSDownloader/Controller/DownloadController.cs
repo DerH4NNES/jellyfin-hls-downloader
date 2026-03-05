@@ -57,7 +57,7 @@ namespace Jellyfin.Plugin.HLSDownloader.Controller
                 : request.OutputPath;
 
             var job = await DownloadJobRepository
-                .CreateJobAsync(request.StartUrl, resolvedOutputPath, cancellationToken)
+                .CreateJobAsync(request.StartUrl, resolvedOutputPath, request.Ref, cancellationToken)
                 .ConfigureAwait(false);
 
             var taskStarted = TryStartDownloadTaskIfNeeded();
@@ -82,6 +82,7 @@ namespace Jellyfin.Plugin.HLSDownloader.Controller
                     id = j.Id.ToString(),
                     startUrl = j.StartUrl,
                     outputPath = j.OutputPath,
+                    refId = j.Ref,
                     status = j.Status,
                     createdAt = j.CreatedAt,
                     finishedAt = j.FinishedAt,

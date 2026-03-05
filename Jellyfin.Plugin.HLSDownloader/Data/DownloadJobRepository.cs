@@ -14,7 +14,7 @@ namespace Jellyfin.Plugin.HLSDownloader.Data
     /// </summary>
     internal static class DownloadJobRepository
     {
-        internal static async Task<DownloadJobEntity> CreateJobAsync(Uri startUrl, string outputPath, CancellationToken cancellationToken = default)
+        internal static async Task<DownloadJobEntity> CreateJobAsync(Uri startUrl, string outputPath, string? reference = null, CancellationToken cancellationToken = default)
         {
             return await ExecuteWithRetryAsync(
                 async db =>
@@ -24,6 +24,7 @@ namespace Jellyfin.Plugin.HLSDownloader.Data
                         Id = Guid.NewGuid(),
                         StartUrl = startUrl.ToString(),
                         OutputPath = outputPath,
+                        Ref = string.IsNullOrWhiteSpace(reference) ? null : reference,
                         Status = "QUEUED",
                         CreatedAt = DateTime.UtcNow
                     };
@@ -47,8 +48,7 @@ namespace Jellyfin.Plugin.HLSDownloader.Data
         internal static async Task<DownloadJobEntity?> GetJobByIdAsync(Guid jobId, CancellationToken cancellationToken = default)
         {
             return await ExecuteWithRetryAsync(
-                db => db.Jobs
-                    .FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken),
+                db => FindJobByIdAsync(db, jobId, cancellationToken),
                 cancellationToken).ConfigureAwait(false);
         }
 
@@ -79,15 +79,32 @@ namespace Jellyfin.Plugin.HLSDownloader.Data
             return await ExecuteWithRetryAsync(
                 async db =>
                 {
-                    var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken).ConfigureAwait(false);
-                    if (job == null)
+                    var existing = await FindJobByIdAsync(db, jobId, cancellationToken).ConfigureAwait(false);
+                    if (existing == null)
                     {
                         return false;
                     }
 
-                    mutate(job);
-                    await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-                    return true;
+                    var updated = new DownloadJobEntity
+                    {
+                        Id = existing.Id,
+                        StartUrl = existing.StartUrl,
+                        OutputPath = existing.OutputPath,
+                        Ref = existing.Ref,
+                        Status = existing.Status,
+                        CreatedAt = existing.CreatedAt,
+                        FinishedAt = existing.FinishedAt,
+                        ErrorMessage = existing.ErrorMessage
+                    };
+
+                    mutate(updated);
+
+                    var normalizedId = jobId.ToString("D");
+                    var affectedRows = await db.Database.ExecuteSqlInterpolatedAsync(
+                        $"UPDATE Jobs SET StartUrl = {updated.StartUrl}, OutputPath = {updated.OutputPath}, Ref = {updated.Ref}, Status = {updated.Status}, CreatedAt = {updated.CreatedAt}, FinishedAt = {updated.FinishedAt}, ErrorMessage = {updated.ErrorMessage} WHERE lower(Id) = lower({normalizedId})",
+                        cancellationToken).ConfigureAwait(false);
+
+                    return affectedRows > 0;
                 },
                 cancellationToken).ConfigureAwait(false);
         }
@@ -97,15 +114,34 @@ namespace Jellyfin.Plugin.HLSDownloader.Data
             return await ExecuteWithRetryAsync(
                 async db =>
                 {
-                    var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken).ConfigureAwait(false);
-                    if (job == null)
+                    var normalizedId = jobId.ToString("D");
+                    var affectedRows = await db.Database.ExecuteSqlInterpolatedAsync(
+                        $"DELETE FROM Jobs WHERE lower(Id) = lower({normalizedId})",
+                        cancellationToken).ConfigureAwait(false);
+
+                    return affectedRows > 0;
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        internal static async Task<int> DeleteJobsByStatusAsync(string status, CancellationToken cancellationToken = default)
+        {
+            return await ExecuteWithRetryAsync(
+                async db =>
+                {
+                    var jobs = await db.Jobs
+                        .Where(j => j.Status == status)
+                        .ToListAsync(cancellationToken)
+                        .ConfigureAwait(false);
+
+                    if (jobs.Count == 0)
                     {
-                        return false;
+                        return 0;
                     }
 
-                    db.Jobs.Remove(job);
+                    db.Jobs.RemoveRange(jobs);
                     await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-                    return true;
+                    return jobs.Count;
                 },
                 cancellationToken).ConfigureAwait(false);
         }
@@ -163,6 +199,24 @@ namespace Jellyfin.Plugin.HLSDownloader.Data
             {
                 return await operation(fallbackDb).ConfigureAwait(false);
             }
+        }
+
+        private static async Task<DownloadJobEntity?> FindJobByIdAsync(DownloadJobDbContext db, Guid jobId, CancellationToken cancellationToken)
+        {
+            var byGuid = await db.Jobs
+                .FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (byGuid is not null)
+            {
+                return byGuid;
+            }
+
+            var normalizedId = jobId.ToString("D");
+            return await db.Jobs
+                .FromSqlInterpolated($"SELECT * FROM Jobs WHERE lower(Id) = lower({normalizedId}) LIMIT 1")
+                .FirstOrDefaultAsync(cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 }

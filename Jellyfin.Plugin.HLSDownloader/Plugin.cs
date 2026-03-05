@@ -29,6 +29,7 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
         try
         {
             _ = DownloadJobRepository.ResetRunningJobsToQueuedAsync(CancellationToken.None).GetAwaiter().GetResult();
+            _ = DownloadJobRepository.DeleteJobsByStatusAsync("DOWNLOADING", CancellationToken.None).GetAwaiter().GetResult();
         }
         catch
         {
