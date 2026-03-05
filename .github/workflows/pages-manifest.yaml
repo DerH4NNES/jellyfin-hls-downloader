@@ -26,6 +26,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          RELEASE_API_URL: ${{ github.event.release.url }}
         run: |
           set -euo pipefail
 
@@ -46,24 +47,26 @@ jobs:
           if [ -z "${DESCRIPTION}" ]; then DESCRIPTION="${OVERVIEW}"; fi
           if [ -z "${CHANGELOG}" ]; then CHANGELOG="Release ${VERSION}"; fi
 
-          # Fetch latest release and pick first zip asset
-          RELEASE_JSON=$(curl -sSL \
-            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest")
+          # Fetch release payload and require a real uploaded zip asset
+          if [ -n "${RELEASE_API_URL:-}" ]; then
+            RELEASE_JSON=$(curl -sSL \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "${RELEASE_API_URL}")
+          else
+            RELEASE_JSON=$(curl -sSL \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest")
+          fi
 
-          ZIP_URL=$(printf '%s' "${RELEASE_JSON}" | jq -r '.assets[]? | select(.name | test("\\.zip$")) | .browser_download_url' | head -n1)
+          ZIP_URL=$(printf '%s' "${RELEASE_JSON}" | jq -r '.assets[]? | select((.name | test("\\.zip$")) and (.state == "uploaded")) | .browser_download_url' | head -n1)
           RELEASE_TAG=$(printf '%s' "${RELEASE_JSON}" | jq -r '.tag_name // empty')
           RELEASE_PUBLISHED_AT=$(printf '%s' "${RELEASE_JSON}" | jq -r '.published_at // empty')
 
-          # Fallback to GitHub tag archive when no explicit .zip release asset exists
-          if [ -z "${ZIP_URL}" ] && [ -n "${RELEASE_TAG}" ]; then
-            ZIP_URL="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${RELEASE_TAG}.zip"
-            echo "No .zip release asset found; using tag archive: ${ZIP_URL}"
-          fi
-
           if [ -z "${ZIP_URL}" ]; then
-            echo "No ZIP URL could be resolved from latest release (asset or tag archive)."
+            echo "No uploaded .zip asset found on release ${RELEASE_TAG:-<unknown>}."
+            echo "Please attach a built plugin .zip file to the GitHub release assets."
             exit 1
           fi
 
