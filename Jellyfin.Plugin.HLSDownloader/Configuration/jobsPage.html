@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>HLS Downloader</title>
+    <title>HLS Downloader Jobs</title>
     <style>
         .hls-actions {
             display: flex;
@@ -67,7 +67,7 @@
         .hls-status.status-cancelled {
             color: #94a3b8;
             border-color: rgba(148, 163, 184, 0.45);
-        <title>HLS Downloader Settings</title>
+        }
 
         .hls-muted {
             opacity: 0.75;
@@ -86,6 +86,38 @@
             font-size: 0.9em;
         }
     </style>
+</head>
+<body>
+    <div id="HlsDownloaderJobsPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-checkbox">
+        <div data-role="content">
+            <div class="content-primary">
+                <h2>Create Job</h2>
+                <form id="HlsCreateJobForm">
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="startUrl">HLS URL (m3u8)</label>
+                        <input id="startUrl" name="startUrl" type="text" is="emby-input" required />
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="outputPath">Output Path (optional)</label>
+                        <input id="outputPath" name="outputPath" type="text" is="emby-input" />
+                    </div>
+                    <div class="hls-actions">
+                        <button is="emby-button" type="submit" class="raised button-submit emby-button">
+                            <span>Create Job</span>
+                        </button>
+                    </div>
+                    <div id="createJobFeedback"></div>
+                </form>
+
+                <hr />
+
+                <h2>Jobs</h2>
+                <div class="hls-actions">
+                    <button id="startDownloadsBtn" is="emby-button" type="button" class="raised emby-button">
+                        <span>Start Downloads</span>
+                    </button>
+                    <button id="refreshJobsBtn" is="emby-button" type="button" class="raised emby-button">
+                        <span>Refresh</span>
                     </button>
                     <label class="checkboxContainer">
                         <input id="autoRefresh" type="checkbox" is="emby-checkbox" />
@@ -114,14 +146,12 @@
         <script type="text/javascript">
             (function () {
                 var HlsDownloader = {
-                    pluginUniqueId: 'd0e54984-2989-45bc-b81e-c71838bdba50',
                     apiBase: '/api/hlsdownloader/downloads',
                     autoRefreshStorageKey: 'hlsdownloader.autoRefresh.enabled'
                 };
 
                 var autoRefreshTimer = null;
-                var page = document.querySelector('#HlsDownloaderConfigPage');
-                var configForm = document.querySelector('#HlsDownloaderConfigForm');
+                var page = document.querySelector('#HlsDownloaderJobsPage');
                 var createForm = document.querySelector('#HlsCreateJobForm');
                 var startDownloadsBtn = document.querySelector('#startDownloadsBtn');
                 var refreshBtn = document.querySelector('#refreshJobsBtn');
@@ -413,37 +443,13 @@
                 }
 
                 page.addEventListener('pageshow', function () {
-                    Dashboard.showLoadingMsg();
-
-                    ApiClient.getPluginConfiguration(HlsDownloader.pluginUniqueId).then(function (config) {
-                        document.querySelector('#downloadDistPath').value = config.DownloadDistPath || '';
-                        loadAutoRefreshPreference();
-                        Dashboard.hideLoadingMsg();
-                        loadJobs();
-                        startAutoRefresh();
-                    }).catch(function () {
-                        Dashboard.hideLoadingMsg();
-                    });
+                    loadAutoRefreshPreference();
+                    loadJobs();
+                    startAutoRefresh();
                 });
 
                 page.addEventListener('pagehide', function () {
                     stopAutoRefresh();
-                });
-
-                configForm.addEventListener('submit', function (e) {
-                    e.preventDefault();
-                    Dashboard.showLoadingMsg();
-
-                    ApiClient.getPluginConfiguration(HlsDownloader.pluginUniqueId).then(function (config) {
-                        config.DownloadDistPath = document.querySelector('#downloadDistPath').value || '';
-                        return ApiClient.updatePluginConfiguration(HlsDownloader.pluginUniqueId, config);
-                    }).then(function (result) {
-                        Dashboard.processPluginConfigurationUpdateResult(result);
-                    }).finally(function () {
-                        Dashboard.hideLoadingMsg();
-                    });
-
-                    return false;
                 });
 
                 createForm.addEventListener('submit', async function (e) {

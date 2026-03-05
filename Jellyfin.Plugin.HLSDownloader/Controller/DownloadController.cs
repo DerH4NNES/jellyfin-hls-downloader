@@ -1,10 +1,13 @@
 using System;
+using System.Collections;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.HLSDownloader.Data;
 using Jellyfin.Plugin.HLSDownloader.Models;
+using MediaBrowser.Model.Tasks;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Jellyfin.Plugin.HLSDownloader.Controller
@@ -16,6 +19,20 @@ namespace Jellyfin.Plugin.HLSDownloader.Controller
     [Route("api/hlsdownloader/downloads")]
     public class DownloadController : ControllerBase
     {
+        private const string HlsTaskKey = "HLSDownloadJobScheduledTask";
+        private const string HlsTaskName = "HLS Download Job Processor";
+
+        private readonly ITaskManager _taskManager;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="DownloadController"/> class.
+        /// </summary>
+        /// <param name="taskManager">Instance of the <see cref="ITaskManager"/> interface.</param>
+        public DownloadController(ITaskManager taskManager)
+        {
+            _taskManager = taskManager;
+        }
+
         /// <summary>
         /// Creates a new queued download job.
         /// </summary>
@@ -42,7 +59,9 @@ namespace Jellyfin.Plugin.HLSDownloader.Controller
             var job = await DownloadJobRepository
                 .CreateJobAsync(request.StartUrl, resolvedOutputPath, cancellationToken)
                 .ConfigureAwait(false);
-            return Ok(new { success = true, jobId = job.Id.ToString(), persistence = "db" });
+
+            var taskStarted = TryStartDownloadTaskIfNeeded();
+            return Ok(new { success = true, jobId = job.Id.ToString(), persistence = "db", taskStarted });
         }
 
         /// <summary>
@@ -112,6 +131,52 @@ namespace Jellyfin.Plugin.HLSDownloader.Controller
             }
 
             return NotFound(new { error = "Job not found or action failed." });
+        }
+
+        private bool TryStartDownloadTaskIfNeeded()
+        {
+            var task = GetScheduledTaskWorkers().FirstOrDefault(worker =>
+                string.Equals(worker.ScheduledTask.Key, HlsTaskKey, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(worker.Name, HlsTaskName, StringComparison.OrdinalIgnoreCase));
+
+            if (task is null || task.State == TaskState.Running)
+            {
+                return false;
+            }
+
+            return TryExecuteTask(task);
+        }
+
+        private bool TryExecuteTask(IScheduledTaskWorker worker)
+        {
+            var executeMethod = _taskManager.GetType().GetMethod(
+                "Execute",
+                BindingFlags.Instance | BindingFlags.Public,
+                null,
+                [typeof(IScheduledTaskWorker), typeof(TaskOptions)],
+                null);
+
+            if (executeMethod is null)
+            {
+                return false;
+            }
+
+            _ = executeMethod.Invoke(_taskManager, [worker, new TaskOptions()]);
+            return true;
+        }
+
+        private IScheduledTaskWorker[] GetScheduledTaskWorkers()
+        {
+            var scheduledTasksProperty = _taskManager.GetType().GetProperty(
+                "ScheduledTasks",
+                BindingFlags.Instance | BindingFlags.Public);
+
+            if (scheduledTasksProperty?.GetValue(_taskManager) is not IEnumerable enumerable)
+            {
+                return [];
+            }
+
+            return enumerable.OfType<IScheduledTaskWorker>().ToArray();
         }
     }
 }

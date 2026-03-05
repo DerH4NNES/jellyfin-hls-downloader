@@ -63,6 +63,17 @@ namespace Jellyfin.Plugin.HLSDownloader.Data
                 cancellationToken).ConfigureAwait(false);
         }
 
+        internal static async Task<DownloadJobEntity?> GetNewestQueuedJobAsync(CancellationToken cancellationToken = default)
+        {
+            return await ExecuteWithRetryAsync(
+                db => db.Jobs
+                    .Where(j => j.Status == "QUEUED")
+                    .OrderByDescending(j => j.CreatedAt)
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(cancellationToken),
+                cancellationToken).ConfigureAwait(false);
+        }
+
         internal static async Task<bool> TryUpdateJobAsync(Guid jobId, Action<DownloadJobEntity> mutate, CancellationToken cancellationToken = default)
         {
             return await ExecuteWithRetryAsync(
