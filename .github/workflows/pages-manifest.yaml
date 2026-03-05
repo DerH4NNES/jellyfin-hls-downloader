@@ -56,8 +56,14 @@ jobs:
           RELEASE_TAG=$(printf '%s' "${RELEASE_JSON}" | jq -r '.tag_name // empty')
           RELEASE_PUBLISHED_AT=$(printf '%s' "${RELEASE_JSON}" | jq -r '.published_at // empty')
 
+          # Fallback to GitHub tag archive when no explicit .zip release asset exists
+          if [ -z "${ZIP_URL}" ] && [ -n "${RELEASE_TAG}" ]; then
+            ZIP_URL="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${RELEASE_TAG}.zip"
+            echo "No .zip release asset found; using tag archive: ${ZIP_URL}"
+          fi
+
           if [ -z "${ZIP_URL}" ]; then
-            echo "No ZIP asset found on latest release. Please attach a .zip plugin artifact to a GitHub release."
+            echo "No ZIP URL could be resolved from latest release (asset or tag archive)."
             exit 1
           fi
 
