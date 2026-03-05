@@ -67,6 +67,12 @@ jobs:
             exit 1
           fi
 
+          CHECKSUM=$(curl -fsSL "${ZIP_URL}" | md5sum | awk '{print toupper($1)}')
+          if [ -z "${CHECKSUM}" ]; then
+            echo "Failed to calculate ZIP checksum."
+            exit 1
+          fi
+
           if [ -z "${RELEASE_PUBLISHED_AT}" ]; then
             RELEASE_PUBLISHED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           fi
@@ -85,6 +91,7 @@ jobs:
             --arg version "${VERSION}" \
             --arg targetAbi "${TARGET_ABI}" \
             --arg sourceUrl "${ZIP_URL}" \
+            --arg checksum "${CHECKSUM}" \
             --arg changelog "${CHANGELOG}" \
             --arg timestamp "${RELEASE_PUBLISHED_AT}" \
             '[
@@ -101,6 +108,7 @@ jobs:
                     changelog: $changelog,
                     targetAbi: $targetAbi,
                     sourceUrl: $sourceUrl,
+                    checksum: $checksum,
                     timestamp: $timestamp
                   }
                 ]

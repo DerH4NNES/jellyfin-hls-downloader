@@ -1,7 +1,7 @@
 ---
 name: "HLSDownloader"
 guid: "d0e54984-2989-45bc-b81e-c71838bdba50"
-version: "1.0.0.0"
+version: "1.0.0.1"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Short description about your plugin"
