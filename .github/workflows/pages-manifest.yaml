@@ -84,7 +84,16 @@ jobs:
             CHANGELOG="${CHANGELOG} (${RELEASE_TAG})"
           fi
 
-          jq -n \
+          REPO_OWNER="${GITHUB_REPOSITORY%%/*}"
+          REPO_NAME="${GITHUB_REPOSITORY##*/}"
+          CURRENT_MANIFEST_URL="https://${REPO_OWNER}.github.io/${REPO_NAME}/manifest.json"
+
+          EXISTING_MANIFEST=$(curl -fsSL "${CURRENT_MANIFEST_URL}" || true)
+          if ! printf '%s' "${EXISTING_MANIFEST}" | jq -e . >/dev/null 2>&1; then
+            EXISTING_MANIFEST='[]'
+          fi
+
+          NEW_ENTRY=$(jq -n \
             --arg guid "${GUID}" \
             --arg name "${NAME}" \
             --arg overview "${OVERVIEW}" \
@@ -116,7 +125,34 @@ jobs:
                   }
                 ]
               }
-            ]' > _site/manifest.json
+            ]')
+
+          jq -n \
+            --argjson existing "${EXISTING_MANIFEST}" \
+            --argjson incoming "${NEW_ENTRY}" \
+            '
+            def dedupe_versions($versions):
+              reduce $versions[] as $v ([];
+                if any(.[]; .version == $v.version) then
+                  .
+                else
+                  . + [$v]
+                end
+              );
+
+            def merge_package($old; $new):
+              ($old + $new) + {
+                versions: dedupe_versions(($new.versions // []) + ($old.versions // []))
+              };
+
+            reduce $incoming[] as $pkg ($existing;
+              if any(.[]; .guid == $pkg.guid) then
+                map(if .guid == $pkg.guid then merge_package(.; $pkg) else . end)
+              else
+                . + [$pkg]
+              end
+            )
+            ' > _site/manifest.json
 
           cat > _site/index.html <<'HTML'
           <!doctype html>
