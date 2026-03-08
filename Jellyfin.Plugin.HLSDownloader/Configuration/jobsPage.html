@@ -98,8 +98,8 @@
                         <input id="startUrl" name="startUrl" type="text" is="emby-input" required />
                     </div>
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="outputPath">Output Path (optional)</label>
-                        <input id="outputPath" name="outputPath" type="text" is="emby-input" />
+                        <label class="inputLabel inputLabelUnfocused" for="outputPath">Output File Path (absolute, .mkv)</label>
+                        <input id="outputPath" name="outputPath" type="text" is="emby-input" required placeholder="/mnt/jelly/SERIES/show/episode.mkv" />
                     </div>
                     <div class="hls-actions">
                         <button is="emby-button" type="submit" class="raised button-submit emby-button">
@@ -466,10 +466,19 @@
                         return false;
                     }
 
-                    var payload = { startUrl: startUrl };
-                    if (outputPath) {
-                        payload.outputPath = outputPath;
+                    if (!outputPath) {
+                        createFeedback.className = 'hls-danger';
+                        createFeedback.textContent = 'Please enter an absolute output file path.';
+                        return false;
                     }
+
+                    if (outputPath.charAt(0) !== '/' || !/\.mkv$/i.test(outputPath)) {
+                        createFeedback.className = 'hls-danger';
+                        createFeedback.textContent = 'Output path must be an absolute .mkv file path.';
+                        return false;
+                    }
+
+                    var payload = { startUrl: startUrl, outputPath: outputPath };
 
                     try {
                         var result = await apiRequest('', {
@@ -480,6 +489,7 @@
                         createFeedback.className = 'hls-ok';
                         createFeedback.textContent = 'Job created: ' + result.jobId;
                         document.querySelector('#startUrl').value = '';
+                        document.querySelector('#outputPath').value = '';
                         await loadJobs();
                     } catch (error) {
                         createFeedback.className = 'hls-danger';

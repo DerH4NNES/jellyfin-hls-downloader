@@ -47,14 +47,21 @@ namespace Jellyfin.Plugin.HLSDownloader.Controller
                 return BadRequest(new { error = "Missing or invalid startUrl parameter." });
             }
 
-            var configuredOutputPath = Plugin.Instance?.Configuration?.DownloadDistPath;
-            var defaultOutputRoot = string.IsNullOrWhiteSpace(configuredOutputPath)
-                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "hls-downloader", "downloads")
-                : configuredOutputPath;
+            if (string.IsNullOrWhiteSpace(request.OutputPath))
+            {
+                return BadRequest(new { error = "Missing outputPath parameter." });
+            }
 
-            var resolvedOutputPath = string.IsNullOrWhiteSpace(request.OutputPath)
-                ? defaultOutputRoot
-                : request.OutputPath;
+            var resolvedOutputPath = request.OutputPath.Trim();
+            if (!Path.IsPathRooted(resolvedOutputPath))
+            {
+                return BadRequest(new { error = "outputPath must be an absolute file path." });
+            }
+
+            if (!string.Equals(Path.GetExtension(resolvedOutputPath), ".mkv", StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new { error = "outputPath must point to a .mkv file." });
+            }
 
             var job = await DownloadJobRepository
                 .CreateJobAsync(request.StartUrl, resolvedOutputPath, request.Ref, cancellationToken)

@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,12 +15,7 @@ namespace Jellyfin.Plugin.HLSDownloader.Data
         /// <returns>Ready-to-use DB context.</returns>
         internal static DownloadJobDbContext CreateContext()
         {
-            var dbPath = GetDatabasePath();
-            var options = new DbContextOptionsBuilder<DownloadJobDbContext>()
-                .UseSqlite($"Data Source={dbPath}")
-                .Options;
-
-            var context = new DownloadJobDbContext(options);
+            var context = Plugin.CreateDbContext();
             context.Database.EnsureCreated();
             EnsureRefColumn(context);
             return context;
@@ -36,14 +30,6 @@ namespace Jellyfin.Plugin.HLSDownloader.Data
             catch (SqliteException ex) when (ex.SqliteErrorCode == 1 && ex.Message.Contains("duplicate column name", StringComparison.OrdinalIgnoreCase))
             {
             }
-        }
-
-        private static string GetDatabasePath()
-        {
-            var appDataDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var pluginDir = Path.Combine(appDataDir, "jellyfin-hls-downloader");
-            Directory.CreateDirectory(pluginDir);
-            return Path.Combine(pluginDir, "jobs.db");
         }
     }
 }

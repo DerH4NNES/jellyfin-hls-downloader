@@ -13,9 +13,9 @@ namespace Jellyfin.Plugin.HLSDownloader.Models
         public Uri StartUrl { get; set; } = new("https://example.invalid/playlist.m3u8", UriKind.Absolute);
 
         /// <summary>
-        /// Gets or sets an optional output folder override.
+        /// Gets or sets the required absolute output file path (.mkv).
         /// </summary>
-        public string? OutputPath { get; set; }
+        public string OutputPath { get; set; } = string.Empty;
 
         /// <summary>
         /// Gets or sets an optional external reference that is stored with the job.

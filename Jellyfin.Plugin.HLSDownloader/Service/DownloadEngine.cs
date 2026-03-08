@@ -1,8 +1,6 @@
 using System;
 using System.Diagnostics;
-using System.Globalization;
 using System.IO;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -36,10 +34,10 @@ namespace Jellyfin.Plugin.HLSDownloader.Service
 
             if (string.IsNullOrWhiteSpace(outputDir))
             {
-                throw new InvalidOperationException("Output directory is empty.");
+                throw new InvalidOperationException("Output file path is empty.");
             }
 
-            var outputFile = ResolveOutputFilePath(startUrl, outputDir);
+            var outputFile = ResolveOutputFilePath(outputDir);
 
             var args = FormattableString.Invariant(
                 $"-y -i \"{startUrl}\" -c copy -map 0 -dn -movflags +faststart \"{outputFile}\"");
@@ -83,37 +81,27 @@ namespace Jellyfin.Plugin.HLSDownloader.Service
             return outputFile;
         }
 
-        private static string ResolveOutputFilePath(Uri startUrl, string outputPath)
+        private static string ResolveOutputFilePath(string outputPath)
         {
+            if (!Path.IsPathRooted(outputPath))
+            {
+                throw new InvalidOperationException("Output file path must be absolute.");
+            }
+
             var extension = Path.GetExtension(outputPath);
-            if (string.Equals(extension, ".mkv", StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(extension, ".mkv", StringComparison.OrdinalIgnoreCase))
             {
-                var parentDirectory = Path.GetDirectoryName(outputPath);
-                if (string.IsNullOrWhiteSpace(parentDirectory))
-                {
-                    throw new InvalidOperationException("Target file path is missing a parent directory.");
-                }
-
-                Directory.CreateDirectory(parentDirectory);
-                return outputPath;
+                throw new InvalidOperationException("Output file path must use .mkv extension.");
             }
 
-            Directory.CreateDirectory(outputPath);
-            return Path.Combine(outputPath, BuildOutputFileName(startUrl));
-        }
-
-        private static string BuildOutputFileName(Uri startUrl)
-        {
-            var stem = Path.GetFileNameWithoutExtension(startUrl.AbsolutePath);
-            if (string.IsNullOrWhiteSpace(stem))
+            var parentDirectory = Path.GetDirectoryName(outputPath);
+            if (string.IsNullOrWhiteSpace(parentDirectory))
             {
-                stem = "hls_video";
+                throw new InvalidOperationException("Target file path is missing a parent directory.");
             }
 
-            var invalid = Path.GetInvalidFileNameChars();
-            stem = new string(stem.Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray());
-            var ts = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
-            return $"{stem}_{ts}.mkv";
+            Directory.CreateDirectory(parentDirectory);
+            return outputPath;
         }
     }
 }

@@ -152,7 +152,7 @@ namespace Jellyfin.Plugin.HLSDownloader.Data
                 async db =>
                 {
                     var runningJobs = await db.Jobs
-                        .Where(j => j.Status == "RUNNING" || j.Status == "ERROR")
+                        .Where(j => j.Status == "RUNNING")
                         .ToListAsync(cancellationToken)
                         .ConfigureAwait(false);
 
@@ -170,6 +170,34 @@ namespace Jellyfin.Plugin.HLSDownloader.Data
 
                     await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
                     return runningJobs.Count;
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        internal static async Task<int> ResetErroredJobsToQueuedAsync(CancellationToken cancellationToken = default)
+        {
+            return await ExecuteWithRetryAsync(
+                async db =>
+                {
+                    var erroredJobs = await db.Jobs
+                        .Where(j => j.Status == "ERROR")
+                        .ToListAsync(cancellationToken)
+                        .ConfigureAwait(false);
+
+                    if (erroredJobs.Count == 0)
+                    {
+                        return 0;
+                    }
+
+                    foreach (var job in erroredJobs)
+                    {
+                        job.Status = "QUEUED";
+                        job.FinishedAt = null;
+                        job.ErrorMessage = null;
+                    }
+
+                    await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+                    return erroredJobs.Count;
                 },
                 cancellationToken).ConfigureAwait(false);
         }
