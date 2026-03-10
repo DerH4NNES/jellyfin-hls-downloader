@@ -125,8 +125,7 @@ namespace Jellyfin.Plugin.HLSDownloader.Controller
                 return NotFound(new { error = "Job not found or action failed." });
             }
 
-            var result = !string.Equals(job.Status, "DONE", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(job.Status, "ERROR", StringComparison.OrdinalIgnoreCase);
+            var result = !string.Equals(job.Status, "DONE", StringComparison.OrdinalIgnoreCase);
 
             if (result)
             {

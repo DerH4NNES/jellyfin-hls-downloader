@@ -3,89 +3,7 @@
 <head>
     <meta charset="utf-8">
     <title>HLS Downloader Jobs</title>
-    <style>
-        .hls-actions {
-            display: flex;
-            gap: 0.75em;
-            flex-wrap: wrap;
-            margin-top: 1em;
-        }
-
-        .hls-table-wrapper {
-            margin-top: 1em;
-            overflow-x: auto;
-        }
-
-        .hls-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .hls-table th,
-        .hls-table td {
-            text-align: left;
-            padding: 0.6em;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            vertical-align: top;
-        }
-
-        .hls-table td code {
-            white-space: pre-wrap;
-            word-break: break-word;
-        }
-
-        .hls-status {
-            display: inline-block;
-            min-width: 88px;
-            padding: 0.15em 0.55em;
-            border-radius: 999px;
-            font-size: 0.85em;
-            text-align: center;
-            border: 1px solid transparent;
-        }
-
-        .hls-status.status-queued {
-            color: #eab308;
-            border-color: rgba(234, 179, 8, 0.45);
-        }
-
-        .hls-status.status-running {
-            color: #38bdf8;
-            border-color: rgba(56, 189, 248, 0.45);
-        }
-
-        .hls-status.status-done {
-            color: #4ade80;
-            border-color: rgba(74, 222, 128, 0.45);
-        }
-
-        .hls-status.status-error {
-            color: #f87171;
-            border-color: rgba(248, 113, 113, 0.45);
-        }
-
-        .hls-status.status-cancelled {
-            color: #94a3b8;
-            border-color: rgba(148, 163, 184, 0.45);
-        }
-
-        .hls-muted {
-            opacity: 0.75;
-            font-size: 0.9em;
-        }
-
-        .hls-danger {
-            color: #f87171;
-            margin-top: 0.35em;
-            font-size: 0.9em;
-        }
-
-        .hls-ok {
-            color: #4ade80;
-            margin-top: 0.35em;
-            font-size: 0.9em;
-        }
-    </style>
+    <link rel="stylesheet" href="plugin.css">
 </head>
 <body>
     <div id="HlsDownloaderJobsPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-checkbox">
@@ -145,6 +63,37 @@
 
         <script type="text/javascript">
             (function () {
+                function ensurePageStyles() {
+                    if (document.getElementById('hls-downloader-jobs-style')) {
+                        return;
+                    }
+
+                    var style = document.createElement('style');
+                    style.id = 'hls-downloader-jobs-style';
+                    style.type = 'text/css';
+                    style.textContent = [
+                        '.hls-actions { display: flex; gap: 0.75em; flex-wrap: wrap; margin-top: 1em; }',
+                        '.hls-table-wrapper { margin-top: 1em; overflow-x: hidden; }',
+                        '.hls-table { width: 100%; border-collapse: collapse; table-layout: fixed; }',
+                        '.hls-table th, .hls-table td { text-align: left; padding: 0.6em; border-bottom: 1px solid rgba(255, 255, 255, 0.08); vertical-align: top; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }',
+                        '.hls-table td code { display: block; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }',
+                        '.hls-status { display: inline-block; min-width: 88px; padding: 0.15em 0.55em; border-radius: 999px; font-size: 0.85em; text-align: center; border: 1px solid transparent; }',
+                        '.hls-status.status-queued { color: #eab308; border-color: rgba(234, 179, 8, 0.45); }',
+                        '.hls-status.status-running { color: #38bdf8; border-color: rgba(56, 189, 248, 0.45); }',
+                        '.hls-status.status-done { color: #4ade80; border-color: rgba(74, 222, 128, 0.45); }',
+                        '.hls-status.status-error { color: #f87171; border-color: rgba(248, 113, 113, 0.45); }',
+                        '.hls-status.status-cancelled { color: #94a3b8; border-color: rgba(148, 163, 184, 0.45); }',
+                        '.hls-muted { opacity: 0.75; font-size: 0.9em; }',
+                        '.hls-danger { color: #f87171; margin-top: 0.35em; font-size: 0.9em; overflow-wrap: anywhere; word-break: break-word; }',
+                        '.hls-ok { color: #4ade80; margin-top: 0.35em; font-size: 0.9em; }'
+                    ].join('\n');
+
+                    var target = document.head || document.documentElement;
+                    target.appendChild(style);
+                }
+
+                ensurePageStyles();
+
                 var HlsDownloader = {
                     apiBase: '/api/hlsdownloader/downloads',
                     autoRefreshStorageKey: 'hlsdownloader.autoRefresh.enabled'
@@ -286,7 +235,7 @@
 
                 function canCancel(status) {
                     var normalized = (status || '').toUpperCase();
-                    return normalized === 'QUEUED' || normalized === 'RUNNING';
+                    return normalized === 'QUEUED' || normalized === 'RUNNING' || normalized === 'ERROR';
                 }
 
                 function isAutoRefreshEnabled() {
